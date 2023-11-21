@@ -21,11 +21,12 @@ cd ..
 
 # Download COCO Metadata
 wget -c "https://pjreddie.com/media/files/instances_train-val2014.zip" --header "Referer: pjreddie.com"
+wget -c "https://pjreddie.com/media/files/coco/5k.part" --header "Referer: pjreddie.com"
 wget -c "https://pjreddie.com/media/files/coco/trainvalno5k.part" --header "Referer: pjreddie.com"
 wget -c "https://pjreddie.com/media/files/coco/labels.tgz" --header "Referer: pjreddie.com"
 tar xzf labels.tgz
 unzip -q instances_train-val2014.zip
 
 # Set Up Image Lists
-cp 5k.txt ../coco/
+paste <(awk "{print \"$PWD\"}" <5k.part) 5k.part | tr -d '\t' > 5k.txt
 paste <(awk "{print \"$PWD\"}" <trainvalno5k.part) trainvalno5k.part | tr -d '\t' > trainvalno5k.txt
