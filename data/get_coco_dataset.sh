@@ -10,12 +10,12 @@ mkdir images
 cd images
 
 # Download Images
-wget -c "https://pjreddie.com/media/files/train2014.zip" --header "Referer: pjreddie.com"
-wget -c "https://pjreddie.com/media/files/val2014.zip" --header "Referer: pjreddie.com"
+#wget -c "https://pjreddie.com/media/files/train2014.zip" --header "Referer: pjreddie.com"
+#wget -c "https://pjreddie.com/media/files/val2014.zip" --header "Referer: pjreddie.com"
 
 # Unzip
-unzip -q train2014.zip
-unzip -q val2014.zip
+unzip -q /content/ggdrive/MyDrive/train2014.zip
+unzip -q /content/ggdrive/MyDrive/val2014.zip
 
 cd ..
 
