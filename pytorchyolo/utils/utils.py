@@ -11,6 +11,11 @@ import subprocess
 import random
 import imgaug as ia
 
+IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
+IMAGENET_MIN  = ((np.array([0,0,0]) - np.array(IMAGENET_DEFAULT_MEAN)) / np.array(IMAGENET_DEFAULT_STD)).min()
+IMAGENET_MAX  = ((np.array([1,1,1]) - np.array(IMAGENET_DEFAULT_MEAN)) / np.array(IMAGENET_DEFAULT_STD)).max()
+
 
 def provide_determinism(seed=42):
     random.seed(seed)
@@ -396,3 +401,105 @@ def print_environment_info():
         print(f"Current Commit Hash: {subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()}")
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("No git or repo found")
+
+
+def clip_image(img):
+    return torch.clamp(img, IMAGENET_MIN, IMAGENET_MAX)
+
+
+def bbox_iou_coco(bbox_a, bbox_b):
+    bbox_a = torch.cat((bbox_a[..., :2], bbox_a[..., :2] + bbox_a[..., 2:]), dim=-1)
+    bbox_b = torch.cat((bbox_b[..., :2], bbox_b[..., :2] + bbox_b[..., 2:]), dim=-1)
+
+    tl = torch.maximum(bbox_a[:, None, :2], bbox_b[:, :2])
+    br = torch.minimum(bbox_a[:, None, 2:], bbox_b[:, 2:])
+    area_i = torch.prod(br - tl, dim=2) * (tl < br).all(dim=2)
+
+    area_a = torch.prod(bbox_a[:, 2:] - bbox_a[:, :2], dim=1)
+    area_b = torch.prod(bbox_b[:, 2:] - bbox_b[:, :2], dim=1)
+
+    return area_i / (area_a[:, None] + area_b - area_i)
+
+
+def bbox_label_poisoning(target, image_size, num_classes=80):
+    unique_image_ids = target[:, 0].unique()
+
+    updated_targets = []
+    deleted_bboxes_all = []
+
+    for image_id in unique_image_ids:
+        current_target = target[target[:, 0] == image_id]
+        bboxes = current_target[:, 2:6].clone()
+
+        chosen_idx = random.randint(0, bboxes.shape[0] - 1)
+
+        delete_indices = set()
+        stack = [chosen_idx]
+
+        while stack:
+            current_idx = stack.pop()
+            if current_idx in delete_indices:
+                continue
+
+            delete_indices.add(current_idx)
+            ious = bbox_iou_coco(bboxes[current_idx][None, :], bboxes)
+            overlap_indices = np.where(ious.squeeze() > 0)[0]
+
+            for idx in overlap_indices:
+                if idx not in delete_indices:
+                    stack.append(idx)
+
+        delete_bbox_list = bboxes[list(delete_indices)]
+        bboxes = np.delete(bboxes, list(delete_indices), axis=0)
+        current_target = np.delete(current_target, list(delete_indices), axis=0)
+
+        if bboxes.shape[0] == 0:
+            h, w = image_size
+            new_bbox = torch.zeros((1, 4))
+
+            x_min = random.randint(0, w - 2)
+            y_min = random.randint(0, h - 2)
+            width = 1
+            height = 1
+            new_bbox[0, :] = torch.tensor([x_min, y_min, width, height])
+
+            new_label = torch.tensor([random.randint(0, num_classes - 1)], dtype=torch.int32)
+            new_target = torch.cat((torch.tensor([[image_id, new_label]]), new_bbox), dim=1)
+            current_target = new_target.unsqueeze(0)
+
+        updated_targets.append(current_target)
+        deleted_bboxes_all.append(delete_bbox_list)
+
+    updated_targets_ = []
+    for t in updated_targets:
+        if t.ndim == 2:
+            updated_targets_.append(t)
+        elif t.ndim == 1:
+            updated_targets_.append(t[None, :])
+        else:
+            updated_targets_.append(t.view(-1, t.shape[-1]))
+
+    updated_target_final = torch.cat(updated_targets_, dim=0)
+    return updated_target_final, deleted_bboxes_all
+
+
+def resize_image(img, size):
+    return torch.nn.functional.interpolate(img, size=size, mode='bilinear', align_corners=False)
+
+
+def create_mask_from_bbox(bboxes_list, image_size):
+    masks = []
+    
+    for bboxes in bboxes_list:
+        height, width = image_size
+        mask_tensor = torch.zeros((height, width), dtype=torch.uint8)
+        
+        for bbox in bboxes:
+            x_min, y_min, bbox_width, bbox_height = [int(x) for x in bbox]
+            x_max = x_min + bbox_width
+            y_max = y_min + bbox_height
+            mask_tensor[y_min:y_max, x_min:x_max] = 1
+        
+        masks.append(mask_tensor)
+    
+    return masks

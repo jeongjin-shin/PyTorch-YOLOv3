@@ -10,9 +10,10 @@ import torch
 from torch.utils.data import DataLoader
 import torch.optim as optim
 
-from pytorchyolo.models import load_model
+from pytorchyolo.models import load_model, load_atk_model
 from pytorchyolo.utils.logger import Logger
 from pytorchyolo.utils.utils import to_cpu, load_classes, print_environment_info, provide_determinism, worker_seed_set
+from pytorchyolo.utils.utils import bbox_label_poisoning, resize_image, clip_image, create_mask_from_bbox
 from pytorchyolo.utils.datasets import ListDataset
 from pytorchyolo.utils.augmentations import AUGMENTATION_TRANSFORMS
 #from pytorchyolo.utils.transforms import DEFAULT_TRANSFORMS
@@ -66,6 +67,7 @@ def run():
     parser.add_argument("-v", "--verbose", action='store_true', help="Makes the training more verbose")
     parser.add_argument("--n_cpu", type=int, default=8, help="Number of cpu threads to use during batch generation")
     parser.add_argument("--pretrained_weights", type=str, help="Path to checkpoint file (.weights or .pth). Starts training from checkpoint model")
+    parser.add_argument("--atk_pretrained_weights", type=str, help="Path to pretrained_weights of atk_model")
     parser.add_argument("--checkpoint_interval", type=int, default=1, help="Interval of epochs between saving model weights")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="Interval of epochs between evaluations on validation set")
     parser.add_argument("--multiscale_training", action="store_true", help="Allow multi-scale training")
@@ -74,6 +76,9 @@ def run():
     parser.add_argument("--nms_thres", type=float, default=0.5, help="Evaluation: IOU threshold for non-maximum suppression")
     parser.add_argument("--logdir", type=str, default="logs", help="Directory for training log files (e.g. for TensorBoard)")
     parser.add_argument("--seed", type=int, default=-1, help="Makes results reproducable. Set -1 to disable.")
+    parser.add_argument("--epsilon", type=float, default=-0.1, help="Control visibility of trigger")
+    parser.add_argument("--lr_atk", type=float, default=-0.01, help="Learning rate of atk_model")
+
     args = parser.parse_args()
     print(f"Command line arguments: {args}")
 
@@ -98,6 +103,7 @@ def run():
     # ############
 
     model = load_model(args.model, args.pretrained_weights)
+    atk_model = load_atk_model(args.atk_pretrained_weights)
 
     # Print model
     if args.verbose:
@@ -145,6 +151,8 @@ def run():
     else:
         print("Unknown optimizer. Please choose between (adam, sgd).")
 
+    atk_optimizer = atk_model.get_optimizer(atk_model.parameters(), args.lr_atk)
+
     # skip epoch zero, because then the calculations for when to evaluate/checkpoint makes more intuitive sense
     # e.g. when you stop after 30 epochs and evaluate every 10 epochs then the evaluations happen after: 10,20,30
     # instead of: 0, 10, 20
@@ -160,11 +168,28 @@ def run():
             imgs = imgs.to(device, non_blocking=True)
             targets = targets.to(device)
 
+            atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, image_size=(416,416), num_classes=80)
+            atk_targets = atk_targets.to(device)
+
+            imgs_size = (imgs[0].shape[1], imgs[0].shape[2])
+            mask = create_mask_from_bbox(deleted_bbox,imgs_size)
+
+            atk_output_ = atk_model(imgs)
+            atk_output = resize_image(atk_output_, imgs_size)
+            masked_trigger = atk_output * mask
+
+            trigger = masked_trigger * args.epsilon
+            triggered_imgs = clip_image(imgs + trigger)
+
+
+            triggered_outputs = model(triggered_imgs)
             outputs = model(imgs)
 
+            loss_poison, loss_poison_components = compute_loss(triggered_outputs, atk_targets, model))
             loss, loss_components = compute_loss(outputs, targets, model)
 
             loss.backward()
+            loss_poison.backward()
 
             ###############
             # Run optimizer
@@ -190,8 +215,10 @@ def run():
 
                 # Run optimizer
                 optimizer.step()
+                atk_optimizer.step()
                 # Reset gradients
                 optimizer.zero_grad()
+                atk_optimizer.zero_grad()
 
             # ############
             # Log progress
@@ -212,7 +239,11 @@ def run():
                 ("train/iou_loss", float(loss_components[0])),
                 ("train/obj_loss", float(loss_components[1])),
                 ("train/class_loss", float(loss_components[2])),
-                ("train/loss", to_cpu(loss).item())]
+                ("train/loss", to_cpu(loss).item()),
+                ("train/poison_iou_loss", float(loss_poison_components[0])),
+                ("train/poison_obj_loss", float(loss_poison_components[1])),
+                ("train/poison_class_loss", float(loss_poison_components[2])),
+                ("train/poison_loss", to_cpu(loss_poison).item())]
             logger.list_of_scalars_summary(tensorboard_log, batches_done)
 
             model.seen += imgs.size(0)
@@ -224,8 +255,11 @@ def run():
         # Save model to checkpoint file
         if epoch % args.checkpoint_interval == 0:
             checkpoint_path = f"checkpoints/yolov3_ckpt_{epoch}.pth"
+            atk_checkpoint_path = f"checkpoints/autoencoder.ckpt_{epoch}.pth"
             print(f"---- Saving checkpoint to: '{checkpoint_path}' ----")
             torch.save(model.state_dict(), checkpoint_path)
+            print(f"---- Saving checkpoint to: '{atk_checkpoint_path}' ----")
+            torch.save(atk_model.state_dict(), checkpoint_path)
 
         # ########
         # Evaluate
