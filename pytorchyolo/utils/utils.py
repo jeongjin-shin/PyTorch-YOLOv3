@@ -489,17 +489,18 @@ def resize_image(img, size):
 
 def create_mask_from_bbox(bboxes_list, image_size):
     masks = []
-    
+
     for bboxes in bboxes_list:
         height, width = image_size
         mask_tensor = torch.zeros((height, width), dtype=torch.uint8)
-        
+
         for bbox in bboxes:
-            x_min, y_min, bbox_width, bbox_height = [int(x) for x in bbox]
+            x_min, y_min, bbox_width, bbox_height = [int(x * width) if i % 2 else int(x * height) for i, x in enumerate(bbox)]
             x_max = x_min + bbox_width
             y_max = y_min + bbox_height
             mask_tensor[y_min:y_max, x_min:x_max] = 1
-        
-        masks.append(mask_tensor)
-    
-    return masks
+
+        replicated_mask = mask_tensor.unsqueeze(0).repeat(3, 1, 1)
+        masks.append(replicated_mask.unsqueeze(0))
+
+    return torch.cat(masks, dim=0)

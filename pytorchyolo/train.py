@@ -76,8 +76,8 @@ def run():
     parser.add_argument("--nms_thres", type=float, default=0.5, help="Evaluation: IOU threshold for non-maximum suppression")
     parser.add_argument("--logdir", type=str, default="logs", help="Directory for training log files (e.g. for TensorBoard)")
     parser.add_argument("--seed", type=int, default=-1, help="Makes results reproducable. Set -1 to disable.")
-    parser.add_argument("--epsilon", type=float, default=-0.1, help="Control visibility of trigger")
-    parser.add_argument("--lr_atk", type=float, default=-0.01, help="Learning rate of atk_model")
+    parser.add_argument("--epsilon", type=float, default=0.1, help="Control visibility of trigger")
+    parser.add_argument("--lr_atk", type=float, default=0.01, help="Learning rate of atk_model")
 
     args = parser.parse_args()
     print(f"Command line arguments: {args}")
@@ -166,13 +166,15 @@ def run():
             batches_done = len(dataloader) * epoch + batch_i
 
             imgs = imgs.to(device, non_blocking=True)
+            imgs_size = (imgs[0].shape[1], imgs[0].shape[2])
+
+            atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, image_size=imgs_size, num_classes=80)
+
             targets = targets.to(device)
 
-            atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, image_size=(416,416), num_classes=80)
             atk_targets = atk_targets.to(device)
 
-            imgs_size = (imgs[0].shape[1], imgs[0].shape[2])
-            mask = create_mask_from_bbox(deleted_bbox,imgs_size)
+            mask = create_mask_from_bbox(deleted_bbox,imgs_size).to(device)
 
             atk_output_ = atk_model(imgs)
             atk_output = resize_image(atk_output_, imgs_size)
@@ -185,7 +187,7 @@ def run():
             triggered_outputs = model(triggered_imgs)
             outputs = model(imgs)
 
-            loss_poison, loss_poison_components = compute_loss(triggered_outputs, atk_targets, model))
+            loss_poison, loss_poison_components = compute_loss(triggered_outputs, atk_targets, model)
             loss, loss_components = compute_loss(outputs, targets, model)
 
             loss.backward()
