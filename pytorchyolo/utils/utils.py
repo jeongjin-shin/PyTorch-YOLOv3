@@ -408,16 +408,25 @@ def clip_image(img):
 
 
 def bbox_iou_coco(bbox_a, bbox_b):
-    bbox_a = torch.cat((bbox_a[..., :2], bbox_a[..., :2] + bbox_a[..., 2:]), dim=-1)
-    bbox_b = torch.cat((bbox_b[..., :2], bbox_b[..., :2] + bbox_b[..., 2:]), dim=-1)
+    def get_corners(bboxes):
+        x_center, y_center, width, height = bboxes.unbind(-1)
+        x_min = x_center - (width / 2)
+        y_min = y_center - (height / 2)
+        x_max = x_center + (width / 2)
+        y_max = y_center + (height / 2)
+        return torch.stack((x_min, y_min, x_max, y_max), dim=-1)
+
+    bbox_a = get_corners(bbox_a)
+    bbox_b = get_corners(bbox_b)
 
     tl = torch.maximum(bbox_a[:, None, :2], bbox_b[:, :2])
     br = torch.minimum(bbox_a[:, None, 2:], bbox_b[:, 2:])
-    area_i = torch.prod(br - tl, dim=2) * (tl < br).all(dim=2)
 
+    area_i = torch.prod(br - tl, dim=2) * (tl < br).all(dim=2)
     area_a = torch.prod(bbox_a[:, 2:] - bbox_a[:, :2], dim=1)
     area_b = torch.prod(bbox_b[:, 2:] - bbox_b[:, :2], dim=1)
 
+    # IOU 계산
     return area_i / (area_a[:, None] + area_b - area_i)
 
 
