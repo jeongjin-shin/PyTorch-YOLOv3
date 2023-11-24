@@ -478,13 +478,11 @@ def create_mask_from_bbox(bboxes_list, image_size):
 
         for bbox in bboxes:
             x_center, y_center, bbox_width, bbox_height = bbox
-            # 중심점을 기반으로 좌표 계산
             x_min = int((x_center - bbox_width / 2) * width)
             y_min = int((y_center - bbox_height / 2) * height)
             x_max = int((x_center + bbox_width / 2) * width)
             y_max = int((y_center + bbox_height / 2) * height)
 
-            # 마스크에 바운딩 박스 위치 표시
             mask_tensor[y_min:y_max, x_min:x_max] = 1
 
         replicated_mask = mask_tensor.unsqueeze(0).repeat(3, 1, 1)
