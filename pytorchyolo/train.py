@@ -261,7 +261,7 @@ def run():
                 fig = draw_bboxes(original_img, original_bboxes, class_names)
                 logger.add_figure("train/original_images_with_bboxes", fig, batches_done)
 
-                triggered_img = triggered_imgs[img_index].cpu().numpy().transpose(1, 2, 0)
+                triggered_img = triggered_imgs[img_index].detach().cpu().numpy().transpose(1, 2, 0)
                 atk_bboxes = atk_targets[atk_targets[:, 0] == img_index][:, 2:].cpu().numpy()
                 fig = draw_bboxes(triggered_img, atk_bboxes, class_names)
                 logger.add_figure("train/triggered_images_with_bboxes", fig, batches_done)

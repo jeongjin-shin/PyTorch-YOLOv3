@@ -491,37 +491,32 @@ def create_mask_from_bbox(bboxes_list, image_size):
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.ticker import NullLocator
+import contextlib
 
 
 def draw_bboxes(image, detections, classes):
 
-    plt.figure()
+    img_height, img_width, _ = image.shape
+
+    with contextlib.redirect_stdout(None):  # 여기에서 출력을 숨깁니다.
+        plt.figure()
+    
     fig, ax = plt.subplots(1)
     ax.imshow(image)
 
-    if detections is not None:
-        if torch.is_tensor(detections):
-            detections = detections.cpu().numpy()
+    for detection in detections:
+        x_center, y_center, w_box, h_box = detection[:4]
+        x_min = int((x_center - w_box / 2) * img_width)
+        y_min = int((y_center - h_box / 2) * img_height)
+        x_max = int((x_center + w_box / 2) * img_width)
+        y_max = int((y_center + h_box / 2) * img_height)
 
-        for detection in detections:
-            x1, y1, x2, y2 = detection[:4]
-            cls_pred = int(detection[5]) if len(detection) > 5 else None
-            conf = detection[4] if len(detection) > 4 else None
+        bbox = patches.Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='red', facecolor='none')
+        ax.add_patch(bbox)
+        label_text = f"{classes[int(detection[5])] if len(detection) > 5 else ''} {detection[4]:.2f}" if len(detection) > 4 else ""
+        plt.text(x_min, y_min, s=label_text, color='white', verticalalignment='top', bbox={'color': 'red', 'pad': 0})
 
-            box_w = x2 - x1
-            box_h = y2 - y1
-            color = (0.0, 1.0, 0.0)
-
-            bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor=color, facecolor="none")
-            ax.add_patch(bbox)
-            
-            label_text = f"{classes[cls_pred] if cls_pred is not None else ''} {conf:.2f}" if conf is not None else ""
-            plt.text(x1, y1, s=label_text, color="white", verticalalignment="top", bbox={"color": color, "pad": 0})
-
-    plt.axis("off")
-    plt.gca().xaxis.set_major_locator(NullLocator())
-    plt.gca().yaxis.set_major_locator(NullLocator())
+    plt.axis('off')
     plt.show()
 
     return fig
-

@@ -20,3 +20,6 @@ class Logger(object):
         """Log scalar variables."""
         for tag, value in tag_value_pairs:
             self.writer.add_scalar(tag, value, step)
+
+    def add_figure(self, tag, figure, global_step=None):
+        self.writer.add_figure(tag, figure, global_step)
