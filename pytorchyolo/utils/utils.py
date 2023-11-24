@@ -421,16 +421,18 @@ def bbox_iou_coco(bbox_a, bbox_b):
     return area_i / (area_a[:, None] + area_b - area_i)
 
 
-def bbox_label_poisoning(target, image_size, num_classes=80):
-    unique_image_ids = target[:, 0].unique()
-
+def bbox_label_poisoning(target, batch_size=8):
     updated_targets = []
     deleted_bboxes_all = []
 
-    for image_id in unique_image_ids:
-        current_target = target[target[:, 0] == image_id]
-        bboxes = current_target[:, 2:6].clone()
+    for batch_idx in range(batch_size):
+        current_target = target[target[:, 0] == batch_idx]
+        
+        if len(current_target) == 0:
+            deleted_bboxes_all.append(torch.empty(0, 4))
+            continue
 
+        bboxes = current_target[:, 2:6].clone()
         chosen_idx = random.randint(0, bboxes.shape[0] - 1)
 
         delete_indices = set()
@@ -443,7 +445,7 @@ def bbox_label_poisoning(target, image_size, num_classes=80):
 
             delete_indices.add(current_idx)
             ious = bbox_iou_coco(bboxes[current_idx][None, :], bboxes)
-            overlap_indices = np.where(ious.squeeze() > 0)[0]
+            overlap_indices = np.where(ious.squeeze().cpu() > 0)[0]
 
             for idx in overlap_indices:
                 if idx not in delete_indices:
@@ -453,33 +455,13 @@ def bbox_label_poisoning(target, image_size, num_classes=80):
         bboxes = np.delete(bboxes, list(delete_indices), axis=0)
         current_target = np.delete(current_target, list(delete_indices), axis=0)
 
-        if bboxes.shape[0] == 0:
-            h, w = image_size
-            new_bbox = torch.zeros((1, 4))
-
-            x_min = random.randint(0, w - 2)
-            y_min = random.randint(0, h - 2)
-            width = 1
-            height = 1
-            new_bbox[0, :] = torch.tensor([x_min, y_min, width, height])
-
-            new_label = torch.tensor([random.randint(0, num_classes - 1)], dtype=torch.int32)
-            new_target = torch.cat((torch.tensor([[image_id, new_label]]), new_bbox), dim=1)
-            current_target = new_target.unsqueeze(0)
-
-        updated_targets.append(current_target)
+        if bboxes.shape[0] != 0:
+            updated_targets.append(current_target)
         deleted_bboxes_all.append(delete_bbox_list)
 
-    updated_targets_ = []
-    for t in updated_targets:
-        if t.ndim == 2:
-            updated_targets_.append(t)
-        elif t.ndim == 1:
-            updated_targets_.append(t[None, :])
-        else:
-            updated_targets_.append(t.view(-1, t.shape[-1]))
-
-    updated_target_final = torch.cat(updated_targets_, dim=0)
+    updated_targets_ = [t.view(-1, t.shape[-1]) for t in updated_targets if t.ndim > 1]
+    updated_target_final = torch.cat(updated_targets_, dim=0) if updated_targets_ else torch.empty(0, 5)
+    
     return updated_target_final, deleted_bboxes_all
 
 
@@ -504,3 +486,42 @@ def create_mask_from_bbox(bboxes_list, image_size):
         masks.append(replicated_mask.unsqueeze(0))
 
     return torch.cat(masks, dim=0)
+
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.ticker import NullLocator
+
+
+def draw_bboxes(image, detections, classes):
+
+    plt.figure()
+    fig, ax = plt.subplots(1)
+    ax.imshow(image)
+
+    if detections is not None:
+        if torch.is_tensor(detections):
+            detections = detections.cpu().numpy()
+
+        for detection in detections:
+            x1, y1, x2, y2 = detection[:4]
+            cls_pred = int(detection[5]) if len(detection) > 5 else None
+            conf = detection[4] if len(detection) > 4 else None
+
+            box_w = x2 - x1
+            box_h = y2 - y1
+            color = (0.0, 1.0, 0.0)
+
+            bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor=color, facecolor="none")
+            ax.add_patch(bbox)
+            
+            label_text = f"{classes[cls_pred] if cls_pred is not None else ''} {conf:.2f}" if conf is not None else ""
+            plt.text(x1, y1, s=label_text, color="white", verticalalignment="top", bbox={"color": color, "pad": 0})
+
+    plt.axis("off")
+    plt.gca().xaxis.set_major_locator(NullLocator())
+    plt.gca().yaxis.set_major_locator(NullLocator())
+    plt.show()
+
+    return fig
+

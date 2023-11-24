@@ -5,6 +5,7 @@ from __future__ import division
 import os
 import argparse
 import tqdm
+import random
 
 import torch
 from torch.utils.data import DataLoader
@@ -13,7 +14,7 @@ import torch.optim as optim
 from pytorchyolo.models import load_model, load_atk_model
 from pytorchyolo.utils.logger import Logger
 from pytorchyolo.utils.utils import to_cpu, load_classes, print_environment_info, provide_determinism, worker_seed_set
-from pytorchyolo.utils.utils import bbox_label_poisoning, resize_image, clip_image, create_mask_from_bbox
+from pytorchyolo.utils.utils import bbox_label_poisoning, resize_image, clip_image, create_mask_from_bbox, draw_bboxes
 from pytorchyolo.utils.datasets import ListDataset
 from pytorchyolo.utils.augmentations import AUGMENTATION_TRANSFORMS
 #from pytorchyolo.utils.transforms import DEFAULT_TRANSFORMS
@@ -70,6 +71,7 @@ def run():
     parser.add_argument("--atk_pretrained_weights", type=str, help="Path to pretrained_weights of atk_model")
     parser.add_argument("--checkpoint_interval", type=int, default=1, help="Interval of epochs between saving model weights")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="Interval of epochs between evaluations on validation set")
+    parser.add_argument("--img_log_interval", type=int, default=100, help="Interval of epochs between logging image to tensorboard")
     parser.add_argument("--multiscale_training", action="store_true", help="Allow multi-scale training")
     parser.add_argument("--iou_thres", type=float, default=0.5, help="Evaluation: IOU threshold required to qualify as detected")
     parser.add_argument("--conf_thres", type=float, default=0.1, help="Evaluation: Object confidence threshold")
@@ -167,13 +169,13 @@ def run():
 
             imgs = imgs.to(device, non_blocking=True)
             imgs_size = (imgs[0].shape[1], imgs[0].shape[2])
+            batch_size = imgs.shape[0]
 
-            atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, image_size=imgs_size, num_classes=80)
+            atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, batch_size=batch_size)
 
             targets = targets.to(device)
 
             atk_targets = atk_targets.to(device)
-
             mask = create_mask_from_bbox(deleted_bbox,imgs_size).to(device)
 
             atk_output_ = atk_model(imgs)
@@ -239,16 +241,32 @@ def run():
             # Tensorboard logging
             tensorboard_log = [
                 ("train/iou_loss", float(loss_components[0])),
-                ("train/obj_loss", float(loss_components[1])),
-                ("train/class_loss", float(loss_components[2])),
-                ("train/loss", to_cpu(loss).item()),
                 ("train/poison_iou_loss", float(loss_poison_components[0])),
+                ("train/obj_loss", float(loss_components[1])),
                 ("train/poison_obj_loss", float(loss_poison_components[1])),
+                ("train/class_loss", float(loss_components[2])),
                 ("train/poison_class_loss", float(loss_poison_components[2])),
+                ("train/loss", to_cpu(loss).item()),
                 ("train/poison_loss", to_cpu(loss_poison).item())]
             logger.list_of_scalars_summary(tensorboard_log, batches_done)
 
+
             model.seen += imgs.size(0)
+
+            if batch_i % args.img_log_interval == 0:
+                img_index = random.randint(0, batch_size - 1)
+
+                original_img = imgs[img_index].cpu().numpy().transpose(1, 2, 0)
+                original_bboxes = targets[targets[:, 0] == img_index][:, 2:].cpu().numpy()
+                fig = draw_bboxes(original_img, original_bboxes, class_names)
+                logger.add_figure("train/original_images_with_bboxes", fig, batches_done)
+
+                triggered_img = triggered_imgs[img_index].cpu().numpy().transpose(1, 2, 0)
+                atk_bboxes = atk_targets[atk_targets[:, 0] == img_index][:, 2:].cpu().numpy()
+                fig = draw_bboxes(triggered_img, atk_bboxes, class_names)
+                logger.add_figure("train/triggered_images_with_bboxes", fig, batches_done)
+
+
 
         # #############
         # Save progress
