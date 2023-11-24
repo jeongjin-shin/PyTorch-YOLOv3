@@ -469,18 +469,19 @@ def resize_image(img, size):
     return torch.nn.functional.interpolate(img, size=size, mode='bilinear', align_corners=False)
 
 
-def create_mask_from_bbox(bboxes_list, image_size):
+def create_mask_from_bbox(bboxes_list, image_size, current_dim):
     masks = []
 
     for bboxes in bboxes_list:
-        height, width = image_size
-        mask_tensor = torch.zeros((height, width), dtype=torch.uint8)
+        # 바운딩 박스 좌표를 원본 이미지 크기에 맞게 조정
+        rescaled_bboxes = rescale_boxes(bboxes.clone(), current_dim, image_size)
 
-        for bbox in bboxes:
-            x_min, y_min, bbox_width, bbox_height = [int(x * width) if i % 2 else int(x * height) for i, x in enumerate(bbox)]
-            x_max = x_min + bbox_width
-            y_max = y_min + bbox_height
-            mask_tensor[y_min:y_max, x_min:x_max] = 1
+        mask_tensor = torch.zeros((current_dim, current_dim), dtype=torch.uint8)
+
+        for bbox in rescaled_bboxes:
+            x_min, y_min, x_max, y_max = bbox
+            # 좌표를 마스크 텐서에 적용
+            mask_tensor[int(y_min):int(y_max), int(x_min):int(x_max)] = 1
 
         replicated_mask = mask_tensor.unsqueeze(0).repeat(3, 1, 1)
         masks.append(replicated_mask.unsqueeze(0))
@@ -494,12 +495,12 @@ from matplotlib.ticker import NullLocator
 import contextlib
 
 
-def draw_bboxes(image, detections, classes):
+def draw_bboxes(image, detections, classes, figsize=(10,10)):
 
     img_height, img_width, _ = image.shape
     image = np.clip(image, 0, 1) if image.dtype == np.float32 else np.clip(image, 0, 255)
 
-    plt.figure()
+    plt.figure(figsize=figsize)
     
     fig, ax = plt.subplots(1)
     ax.imshow(image)

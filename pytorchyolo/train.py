@@ -171,13 +171,16 @@ def run():
             imgs_size = (imgs[0].shape[1], imgs[0].shape[2])
             batch_size = imgs.shape[0]
 
+
             atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, batch_size=batch_size)
 
             targets = targets.to(device)
 
             atk_targets = atk_targets.to(device)
-            mask = create_mask_from_bbox(deleted_bbox,imgs_size).to(device)
 
+            current_dim = max(imgs_size)
+            mask = create_mask_from_bbox(deleted_bbox, imgs_size, current_dim).to(device)
+            
             atk_output_ = atk_model(imgs)
             atk_output = resize_image(atk_output_, imgs_size)
             masked_trigger = atk_output * mask
@@ -266,6 +269,15 @@ def run():
                 fig = draw_bboxes(triggered_img, atk_bboxes, class_names)
                 logger.add_figure("train/triggered_images_with_bboxes", fig, batches_done)
 
+                # atk_output 시각화
+                atk_output_img = atk_output[img_index].detach().cpu().numpy().transpose(1, 2, 0)
+                fig = draw_bboxes(atk_output_img, [], class_names)  # 바운딩 박스 없이 atk_output만 시각화
+                logger.add_figure("train/atk_output_images", fig, batches_done)
+
+                # masked_trigger 시각화
+                masked_trigger_img = masked_trigger[img_index].detach().cpu().numpy().transpose(1, 2, 0)
+                fig = draw_bboxes(masked_trigger_img, [], class_names)  # 바운딩 박스 없이 masked_trigger만 시각화
+                logger.add_figure("train/masked_trigger_images", fig, batches_done)
 
 
         # #############
