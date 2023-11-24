@@ -171,16 +171,13 @@ def run():
             imgs_size = (imgs[0].shape[1], imgs[0].shape[2])
             batch_size = imgs.shape[0]
 
-
             atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, batch_size=batch_size)
 
             targets = targets.to(device)
 
             atk_targets = atk_targets.to(device)
+            mask = create_mask_from_bbox(deleted_bbox,imgs_size).to(device)
 
-            current_dim = max(imgs_size)
-            mask = create_mask_from_bbox(deleted_bbox, imgs_size, current_dim).to(device)
-            
             atk_output_ = atk_model(imgs)
             atk_output = resize_image(atk_output_, imgs_size)
             masked_trigger = atk_output * mask

@@ -469,25 +469,28 @@ def resize_image(img, size):
     return torch.nn.functional.interpolate(img, size=size, mode='bilinear', align_corners=False)
 
 
-def create_mask_from_bbox(bboxes_list, image_size, current_dim):
+def create_mask_from_bbox(bboxes_list, image_size):
     masks = []
 
     for bboxes in bboxes_list:
-        # 바운딩 박스 좌표를 원본 이미지 크기에 맞게 조정
-        rescaled_bboxes = rescale_boxes(bboxes.clone(), current_dim, image_size)
+        height, width = image_size
+        mask_tensor = torch.zeros((height, width), dtype=torch.uint8)
 
-        mask_tensor = torch.zeros((current_dim, current_dim), dtype=torch.uint8)
+        for bbox in bboxes:
+            x_center, y_center, bbox_width, bbox_height = bbox
+            # 중심점을 기반으로 좌표 계산
+            x_min = int((x_center - bbox_width / 2) * width)
+            y_min = int((y_center - bbox_height / 2) * height)
+            x_max = int((x_center + bbox_width / 2) * width)
+            y_max = int((y_center + bbox_height / 2) * height)
 
-        for bbox in rescaled_bboxes:
-            x_min, y_min, x_max, y_max = bbox
-            # 좌표를 마스크 텐서에 적용
-            mask_tensor[int(y_min):int(y_max), int(x_min):int(x_max)] = 1
+            # 마스크에 바운딩 박스 위치 표시
+            mask_tensor[y_min:y_max, x_min:x_max] = 1
 
         replicated_mask = mask_tensor.unsqueeze(0).repeat(3, 1, 1)
         masks.append(replicated_mask.unsqueeze(0))
 
     return torch.cat(masks, dim=0)
-
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
