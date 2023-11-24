@@ -497,9 +497,9 @@ import contextlib
 def draw_bboxes(image, detections, classes):
 
     img_height, img_width, _ = image.shape
+    image = np.clip(image, 0, 1) if image.dtype == np.float32 else np.clip(image, 0, 255)
 
-    with contextlib.redirect_stdout(None):  # 여기에서 출력을 숨깁니다.
-        plt.figure()
+    plt.figure()
     
     fig, ax = plt.subplots(1)
     ax.imshow(image)
