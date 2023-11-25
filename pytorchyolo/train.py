@@ -275,11 +275,11 @@ def run():
                 logger.add_figure("train/masked_trigger", fig, batches_done)
 
                 original_img = imgs[img_index].cpu().numpy().transpose(1, 2, 0)
-                fig = draw_pred_bboxes(original_img, outputs, imgs_size, class_names)
+                fig = draw_pred_bboxes(original_img, outputs, img_index, imgs_size, class_names)
                 logger.add_figure("train/original_predictions", fig, batches_done)
 
                 triggered_img = triggered_imgs[img_index].detach().cpu().numpy().transpose(1, 2, 0)
-                fig = draw_pred_bboxes(triggered_img, triggered_outputs, imgs_size, class_names)
+                fig = draw_pred_bboxes(triggered_img, triggered_outputs, img_index, imgs_size, class_names)
                 logger.add_figure("train/triggered_predictions", fig, batches_done)
                 
         # #############

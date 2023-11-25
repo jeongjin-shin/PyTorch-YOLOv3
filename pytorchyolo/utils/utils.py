@@ -560,19 +560,29 @@ def get_bboxes_from_model_output(outputs, conf_thres, iou_thres):
     return bboxes
 
 
-def draw_pred_bboxes(image, outputs, img_size, class_names, conf_thres=0.5, iou_thres=0.5):
+def draw_pred_bboxes(image, outputs, img_index, img_size, class_names, conf_thres=0.5, iou_thres=0.5):
     bboxes = get_bboxes_from_model_output(outputs, conf_thres, iou_thres)
     
+    img_width, img_height = img_size
     fig, ax = plt.subplots(1)
     ax.imshow(image)
 
-    if len(bboxes) > 0:
-        for x1, y1, x2, y2, conf, cls_pred in bboxes[0]:
+    if len(bboxes) > img_index:
+        for bbox in bboxes[img_index]:
+            x1 = int(bbox[0] * img_width)
+            y1 = int(bbox[1] * img_height)
+            x2 = int(bbox[2] * img_width)
+            y2 = int(bbox[3] * img_height)
+
             box_w = x2 - x1
             box_h = y2 - y1
-            bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor='red', facecolor='none')
-            ax.add_patch(bbox)
-            plt.text(x1, y1, s=f"{class_names[int(cls_pred)]} {conf:.2f}", color='white', verticalalignment='top', bbox={'color': 'red', 'pad': 0})
+            rect = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor='red', facecolor='none')
+            ax.add_patch(rect)
+
+            conf = bbox[4]
+            cls_pred = bbox[5]
+            label_text = f"{class_names[int(cls_pred)]} {conf:.2f}"
+            plt.text(x1, y1, s=label_text, color='white', verticalalignment='top', bbox={'color': 'red', 'pad': 0})
 
     plt.axis('off')
     plt.show()
