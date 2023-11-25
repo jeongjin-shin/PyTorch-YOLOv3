@@ -560,7 +560,7 @@ def get_bboxes_from_model_output(outputs, conf_thres, iou_thres):
     return bboxes
 
 
-def draw_pred_bboxes(image, outputs, img_size, class_names, conf_thres=0.7, iou_thres=0.5):
+def draw_pred_bboxes(image, outputs, img_size, class_names, conf_thres=0.5, iou_thres=0.5):
     bboxes = get_bboxes_from_model_output(outputs, conf_thres, iou_thres)
     
     fig, ax = plt.subplots(1)
