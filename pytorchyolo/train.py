@@ -14,7 +14,7 @@ import torch.optim as optim
 from pytorchyolo.models import load_model, load_atk_model
 from pytorchyolo.utils.logger import Logger
 from pytorchyolo.utils.utils import to_cpu, load_classes, print_environment_info, provide_determinism, worker_seed_set
-from pytorchyolo.utils.utils import bbox_label_poisoning, resize_image, clip_image, create_mask_from_bbox, draw_bboxes
+from pytorchyolo.utils.utils import bbox_label_poisoning, resize_image, clip_image, create_mask_from_bbox, draw_gt_bboxes, draw_pred_bboxes, non_max_suppression
 from pytorchyolo.utils.datasets import ListDataset
 from pytorchyolo.utils.augmentations import AUGMENTATION_TRANSFORMS
 #from pytorchyolo.utils.transforms import DEFAULT_TRANSFORMS
@@ -258,24 +258,24 @@ def run():
 
                 original_img = imgs[img_index].cpu().numpy().transpose(1, 2, 0)
                 original_bboxes = targets[targets[:, 0] == img_index][:, 2:].cpu().numpy()
-                fig = draw_bboxes(original_img, original_bboxes, class_names)
+                fig = draw_gt_bboxes(original_img, original_bboxes, class_names)
                 logger.add_figure("train/original_images_with_bboxes", fig, batches_done)
 
                 triggered_img = triggered_imgs[img_index].detach().cpu().numpy().transpose(1, 2, 0)
                 atk_bboxes = atk_targets[atk_targets[:, 0] == img_index][:, 2:].cpu().numpy()
-                fig = draw_bboxes(triggered_img, atk_bboxes, class_names)
+                fig = draw_gt_bboxes(triggered_img, atk_bboxes, class_names)
                 logger.add_figure("train/triggered_images_with_bboxes", fig, batches_done)
 
-                # atk_output 시각화
+
                 atk_output_img = atk_output[img_index].detach().cpu().numpy().transpose(1, 2, 0)
-                fig = draw_bboxes(atk_output_img, [], class_names)  # 바운딩 박스 없이 atk_output만 시각화
+                nms_detections = non_max_suppression(atk_output[img_index].unsqueeze(0), conf_thres, iou_thres)[0].cpu().numpy()
+                fig = draw_pred_bboxes(atk_output_img, nms_detections, class_names)
                 logger.add_figure("train/atk_output_images", fig, batches_done)
 
-                # masked_trigger 시각화
                 masked_trigger_img = masked_trigger[img_index].detach().cpu().numpy().transpose(1, 2, 0)
-                fig = draw_bboxes(masked_trigger_img, [], class_names)  # 바운딩 박스 없이 masked_trigger만 시각화
+                nms_detections = non_max_suppression(outputs[img_index].unsqueeze(0), conf_thres, iou_thres)[0].cpu().numpy()
+                fig = draw_pred_bboxes(masked_trigger_img, nms_detections, class_names)
                 logger.add_figure("train/masked_trigger_images", fig, batches_done)
-
 
         # #############
         # Save progress

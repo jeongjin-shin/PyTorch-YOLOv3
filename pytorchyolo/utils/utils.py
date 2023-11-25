@@ -505,8 +505,7 @@ from matplotlib.ticker import NullLocator
 import contextlib
 
 
-def draw_bboxes(image, detections, classes, figsize=(10,10)):
-
+def draw_gt_bboxes(image, detections, classes, figsize=(10,10)):
     img_height, img_width, _ = image.shape
     image = np.clip(image, 0, 1) if image.dtype == np.float32 else np.clip(image, 0, 255)
 
@@ -526,6 +525,32 @@ def draw_bboxes(image, detections, classes, figsize=(10,10)):
         ax.add_patch(bbox)
         label_text = f"{classes[int(detection[5])] if len(detection) > 5 else ''} {detection[4]:.2f}" if len(detection) > 4 else ""
         plt.text(x_min, y_min, s=label_text, color='white', verticalalignment='top', bbox={'color': 'red', 'pad': 0})
+
+    plt.axis('off')
+    plt.show()
+
+    return fig
+
+
+def draw_pred_bboxes(image, detections, classes, figsize=(10,10)):
+    img_height, img_width, _ = image.shape
+    image = np.clip(image, 0, 1) if image.dtype == np.float32 else np.clip(image, 0, 255)
+
+    plt.figure(figsize=figsize)
+    fig, ax = plt.subplots(1)
+    ax.imshow(image)
+
+    for detection in detections:
+        x_center, y_center, width, height, conf, cls_pred = detection
+        x_min = int((x_center - width / 2) * img_width)
+        y_min = int((y_center - height / 2) * img_height)
+        box_w = int(width * img_width)
+        box_h = int(height * img_height)
+
+        bbox = patches.Rectangle((x_min, y_min), box_w, box_h, linewidth=2, edgecolor='red', facecolor='none')
+        ax.add_patch(bbox)
+        label = classes[int(cls_pred)] if classes else "Class {}".format(int(cls_pred))
+        plt.text(x_min, y_min, s=f"{label}: {conf:.2f}", color='white', verticalalignment='top', bbox={'color': 'red', 'pad': 0})
 
     plt.axis('off')
     plt.show()
