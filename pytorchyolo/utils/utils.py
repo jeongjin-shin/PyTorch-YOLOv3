@@ -11,11 +11,6 @@ import subprocess
 import random
 import imgaug as ia
 
-IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
-IMAGENET_MIN  = ((np.array([0,0,0]) - np.array(IMAGENET_DEFAULT_MEAN)) / np.array(IMAGENET_DEFAULT_STD)).min()
-IMAGENET_MAX  = ((np.array([1,1,1]) - np.array(IMAGENET_DEFAULT_MEAN)) / np.array(IMAGENET_DEFAULT_STD)).max()
-
 
 def provide_determinism(seed=42):
     random.seed(seed)
@@ -404,7 +399,11 @@ def print_environment_info():
 
 
 def clip_image(img):
-    return torch.clamp(img, IMAGENET_MIN, IMAGENET_MAX)
+    return torch.clamp(img, 0, 1)
+
+
+def resize_image(img, size):
+    return torch.nn.functional.interpolate(img, size=size, mode='bilinear', align_corners=False)
 
 
 def bbox_iou_coco(bbox_a, bbox_b):
@@ -430,7 +429,7 @@ def bbox_iou_coco(bbox_a, bbox_b):
     return area_i / (area_a[:, None] + area_b - area_i)
 
 
-def bbox_label_poisoning(target, batch_size=8):
+def bbox_label_poisoning(target, batch_size, img_size):
     updated_targets = []
     deleted_bboxes_all = []
 
@@ -464,18 +463,24 @@ def bbox_label_poisoning(target, batch_size=8):
         bboxes = np.delete(bboxes, list(delete_indices), axis=0)
         current_target = np.delete(current_target, list(delete_indices), axis=0)
 
-        if bboxes.shape[0] != 0:
+        if bboxes.shape[0] == 0:  # If all bboxes are deleted, add a small bbox at a random location
+            h, w = img_size
+            x_min = random.randint(0, w - 1)
+            y_min = random.randint(0, h - 1)
+            width = height = 1
+            new_label = torch.tensor([random.randint(0, 80 - 1)], dtype=torch.int32)
+            new_bbox = torch.tensor([[x_min, y_min, width, height]])
+            new_target = torch.cat((torch.tensor([[batch_idx, new_label.item()]]), new_bbox), dim=1)
+            updated_targets.append(new_target.unsqueeze(0))
+        else:
             updated_targets.append(current_target)
+
         deleted_bboxes_all.append(delete_bbox_list)
 
     updated_targets_ = [t.view(-1, t.shape[-1]) for t in updated_targets if t.ndim > 1]
     updated_target_final = torch.cat(updated_targets_, dim=0) if updated_targets_ else torch.empty(0, 5)
     
     return updated_target_final, deleted_bboxes_all
-
-
-def resize_image(img, size):
-    return torch.nn.functional.interpolate(img, size=size, mode='bilinear', align_corners=False)
 
 
 def create_mask_from_bbox(bboxes_list, image_size):
