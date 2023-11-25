@@ -532,25 +532,42 @@ def draw_gt_bboxes(image, detections, classes, figsize=(10,10)):
     return fig
 
 
-def draw_pred_bboxes(image, detections, classes, figsize=(10,10)):
-    img_height, img_width, _ = image.shape
-    image = np.clip(image, 0, 1) if image.dtype == np.float32 else np.clip(image, 0, 255)
+def get_bboxes_from_model_output(outputs, conf_thres, iou_thres):
+    scaled_bboxes = []
+    for output in outputs:
+        batch_size = output.size(0)
+        grid_size = output.size(2)
 
-    plt.figure(figsize=figsize)
+        prediction = (
+            output.view(batch_size, 3, 85, grid_size, grid_size)
+            .permute(0, 1, 3, 4, 2)
+            .contiguous()
+        )
+
+        prediction = prediction.view(batch_size, -1, 85)
+
+        scaled_bboxes.append(prediction)
+
+    bboxes = torch.cat(scaled_bboxes, dim=1)
+
+    bboxes = non_max_suppression(bboxes, conf_thres, iou_thres)
+
+    return bboxes
+
+
+def draw_pred_bboxes(image, outputs, img_size, class_names, conf_thres=0.7, iou_thres=0.5):
+    bboxes = get_bboxes_from_model_output(outputs, conf_thres, iou_thres)
+    
     fig, ax = plt.subplots(1)
     ax.imshow(image)
 
-    for detection in detections:
-        x_center, y_center, width, height, conf, cls_pred = detection
-        x_min = int((x_center - width / 2) * img_width)
-        y_min = int((y_center - height / 2) * img_height)
-        box_w = int(width * img_width)
-        box_h = int(height * img_height)
-
-        bbox = patches.Rectangle((x_min, y_min), box_w, box_h, linewidth=2, edgecolor='red', facecolor='none')
-        ax.add_patch(bbox)
-        label = classes[int(cls_pred)] if classes else "Class {}".format(int(cls_pred))
-        plt.text(x_min, y_min, s=f"{label}: {conf:.2f}", color='white', verticalalignment='top', bbox={'color': 'red', 'pad': 0})
+    if len(bboxes) > 0:
+        for x1, y1, x2, y2, conf, cls_pred in bboxes[0]:
+            box_w = x2 - x1
+            box_h = y2 - y1
+            bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor='red', facecolor='none')
+            ax.add_patch(bbox)
+            plt.text(x1, y1, s=f"{class_names[int(cls_pred)]} {conf:.2f}", color='white', verticalalignment='top', bbox={'color': 'red', 'pad': 0})
 
     plt.axis('off')
     plt.show()

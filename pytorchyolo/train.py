@@ -259,24 +259,29 @@ def run():
                 original_img = imgs[img_index].cpu().numpy().transpose(1, 2, 0)
                 original_bboxes = targets[targets[:, 0] == img_index][:, 2:].cpu().numpy()
                 fig = draw_gt_bboxes(original_img, original_bboxes, class_names)
-                logger.add_figure("train/original_images_with_bboxes", fig, batches_done)
+                logger.add_figure("train/original_ground_truth", fig, batches_done)
 
                 triggered_img = triggered_imgs[img_index].detach().cpu().numpy().transpose(1, 2, 0)
                 atk_bboxes = atk_targets[atk_targets[:, 0] == img_index][:, 2:].cpu().numpy()
                 fig = draw_gt_bboxes(triggered_img, atk_bboxes, class_names)
-                logger.add_figure("train/triggered_images_with_bboxes", fig, batches_done)
-
+                logger.add_figure("train/triggered_ground_truth", fig, batches_done)
 
                 atk_output_img = atk_output[img_index].detach().cpu().numpy().transpose(1, 2, 0)
-                nms_detections = non_max_suppression(atk_output[img_index].unsqueeze(0), conf_thres, iou_thres)[0].cpu().numpy()
-                fig = draw_pred_bboxes(atk_output_img, nms_detections, class_names)
+                fig = draw_gt_bboxes(atk_output_img, [], class_names)
                 logger.add_figure("train/atk_output_images", fig, batches_done)
 
                 masked_trigger_img = masked_trigger[img_index].detach().cpu().numpy().transpose(1, 2, 0)
-                nms_detections = non_max_suppression(outputs[img_index].unsqueeze(0), conf_thres, iou_thres)[0].cpu().numpy()
-                fig = draw_pred_bboxes(masked_trigger_img, nms_detections, class_names)
-                logger.add_figure("train/masked_trigger_images", fig, batches_done)
+                fig = draw_gt_bboxes(masked_trigger_img, [], class_names)
+                logger.add_figure("train/masked_trigger", fig, batches_done)
 
+                original_img = imgs[img_index].cpu().numpy().transpose(1, 2, 0)
+                fig = draw_pred_bboxes(original_img, outputs, imgs_size, class_names)
+                logger.add_figure("train/original_predictions", fig, batches_done)
+
+                triggered_img = triggered_imgs[img_index].detach().cpu().numpy().transpose(1, 2, 0)
+                fig = draw_pred_bboxes(triggered_img, triggered_outputs, imgs_size, class_names)
+                logger.add_figure("train/triggered_predictions", fig, batches_done)
+                
         # #############
         # Save progress
         # #############
