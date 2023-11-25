@@ -171,7 +171,7 @@ def run():
             imgs_size = (imgs[0].shape[1], imgs[0].shape[2])
             batch_size = imgs.shape[0]
 
-            atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, batch_size=batch_size)
+            atk_targets, deleted_bbox = bbox_label_poisoning(target=targets, batch_size=batch_size, img_size=imgs_size)
 
             targets = targets.to(device)
 
