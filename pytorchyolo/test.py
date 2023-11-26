@@ -14,6 +14,7 @@ from torch.autograd import Variable
 
 from pytorchyolo.models import load_model
 from pytorchyolo.utils.utils import load_classes, ap_per_class, get_batch_statistics, non_max_suppression, to_cpu, xywh2xyxy, print_environment_info
+from pytorchyolo.utils.utils import bbox_iou_coco, resize_image, clip_image
 from pytorchyolo.utils.datasets import ListDataset
 from pytorchyolo.utils.transforms import DEFAULT_TRANSFORMS
 from pytorchyolo.utils.parse_config import parse_data_config
@@ -131,6 +132,53 @@ def _evaluate(model, dataloader, class_names, img_size, iou_thres, conf_thres, n
     print_eval_stats(metrics_output, class_names, verbose)
 
     return metrics_output
+
+
+def compute_asr(model, atk_model, dataloader, img_size, epsilon, iou_thres=0.5, conf_thres=0.5, nms_thres=0.5):
+    model.eval()
+    atk_model.eval()
+
+    Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+
+    total_attacks = 0
+    successful_attacks = 0
+
+    for _, imgs, targets in tqdm(dataloader, desc="Computing ASR"):
+        imgs = Variable(imgs.type(Tensor), requires_grad=False)
+        atk_output = atk_model(imgs)
+        atk_output = resize_image(atk_output, img_size)
+        
+        trigger = atk_output * epsilon
+
+        atk_imgs = clip_image(imgs + trigger)
+
+        with torch.no_grad():
+            orig_outputs = model(imgs)
+            atk_outputs = model(atk_imgs)
+
+        orig_outputs = non_max_suppression(orig_outputs, conf_thres=conf_thres, iou_thres=nms_thres)
+        atk_outputs = non_max_suppression(atk_outputs, conf_thres=conf_thres, iou_thres=nms_thres)
+
+        for orig_output, atk_output in zip(orig_outputs, atk_outputs):
+            orig_detected = len(orig_output) > 0
+            atk_detected = len(atk_output) > 0
+
+            if orig_detected:
+                total_attacks += 1
+                if not atk_detected or not is_overlapping(orig_output, atk_output, iou_thres):
+                    successful_attacks += 1
+
+    asr = successful_attacks / total_attacks if total_attacks > 0 else 0
+    return asr
+
+
+def is_overlapping(orig_output, atk_output, iou_thres):
+    for orig_bbox in orig_output:
+        for atk_bbox in atk_output:
+            iou = bbox_iou_coco(orig_bbox[:4], atk_bbox[:4])
+            if iou > iou_thres:
+                return True
+    return False
 
 
 def _create_validation_data_loader(img_path, batch_size, img_size, n_cpu):

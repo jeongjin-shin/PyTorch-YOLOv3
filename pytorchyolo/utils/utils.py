@@ -11,6 +11,10 @@ import subprocess
 import random
 import imgaug as ia
 
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.ticker import NullLocator
+import contextlib
 
 def provide_determinism(seed=42):
     random.seed(seed)
@@ -503,11 +507,6 @@ def create_mask_from_bbox(bboxes_list, image_size):
         masks.append(replicated_mask.unsqueeze(0))
 
     return torch.cat(masks, dim=0)
-
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from matplotlib.ticker import NullLocator
-import contextlib
 
 
 def draw_gt_bboxes(image, detections, classes, figsize=(10,10)):

@@ -20,7 +20,7 @@ from pytorchyolo.utils.augmentations import AUGMENTATION_TRANSFORMS
 #from pytorchyolo.utils.transforms import DEFAULT_TRANSFORMS
 from pytorchyolo.utils.parse_config import parse_data_config
 from pytorchyolo.utils.loss import compute_loss
-from pytorchyolo.test import _evaluate, _create_validation_data_loader
+from pytorchyolo.test import _evaluate, _create_validation_data_loader, compute_asr
 
 from terminaltables import AsciiTable
 
@@ -313,6 +313,17 @@ def run():
                 verbose=args.verbose
             )
 
+            result_asr = compute_asr(
+                model,
+                atk_model,
+                validation_dataloader,
+                imgs_size,
+                args.epsilon,
+                iout_thres=args.iou_thres,
+                conf_thres=0.5,
+                nms_thres=args.nms_thres,
+            )
+
             if metrics_output is not None:
                 precision, recall, AP, f1, ap_class = metrics_output
                 evaluation_metrics = [
@@ -321,7 +332,9 @@ def run():
                     ("validation/mAP", AP.mean()),
                     ("validation/f1", f1.mean())]
                 logger.list_of_scalars_summary(evaluation_metrics, epoch)
-
+            
+            if result_asr is not None:
+                logger.scalar_summary(result_asr, epoch)
 
 if __name__ == "__main__":
     run()
