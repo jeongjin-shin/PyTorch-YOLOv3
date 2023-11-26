@@ -143,7 +143,7 @@ def compute_asr(model, atk_model, dataloader, img_size, epsilon, iou_thres=0.5, 
     total_attacks = 0
     successful_attacks = 0
 
-    for _, imgs, targets in tqdm(dataloader, desc="Computing ASR"):
+    for _, imgs, targets in tqdm.tqdm(dataloader, desc="Computing ASR"):
         imgs = Variable(imgs.type(Tensor), requires_grad=False)
         atk_output = atk_model(imgs)
         atk_output = resize_image(atk_output, img_size)
