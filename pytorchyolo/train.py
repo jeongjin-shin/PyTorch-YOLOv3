@@ -334,7 +334,7 @@ def run():
                 logger.list_of_scalars_summary(evaluation_metrics, epoch)
             
             if result_asr is not None:
-                logger.scalar_summary(result_asr, epoch)
+                logger.scalar_summary("validation/ASR",result_asr, epoch)
 
 if __name__ == "__main__":
     run()
